@@ -21,15 +21,15 @@ end_day=${END_DAY[$SLURM_ARRAY_TASK_ID]}
 
 end_mon=06
 start_mon=06
-year=2015
-in_dir=/condo/swatwork/amy/duration/probSevere/201506/$year$start_mon$start_day/
-out_dir=/condo/swatwork/arkweather/best_track/tracks_RT/201506/ascii/
+year=2014
+in_dir=/condo/swatcommon/common/myrorss/$year/$year$start_mon$start_day/segmotion_maxrefl/PolygonTable/scale_0/
+out_dir=/condo/swatwork/arkweather/best_track/tracks_RT/201506/segmotion/
 
 echo $SLURM_ARRAY_TASK_ID
 #echo $in_dir
 #echo $(seq -f "%02g" 9 30)
 
-python archiveBTRT.py $year$start_mon$start_day $year$end_mon$end_day $in_dir $out_dir -i ascii -t ascii
+python archiveBTRT.py $year$start_mon$start_day $year$end_mon$end_day $in_dir $out_dir -i xml -t seg_json
 
 
 
