@@ -444,7 +444,7 @@ def readSegmotionXML(inDir, inSuffix, historyPath, startTime, endTime):
 						elif name == 'Age': age = float(value)
 						elif name == 'StartTime': start = datetime.datetime.strptime(value, '%Y%m%d-%H%M%S')
 					
-					data.append(('OldRowName', 'dimensionless', str(track)))
+					data.append(('OldTrack', 'dimensionless', str(track)))
 					cellID = totNumCells
 			
 					if fileDate == endTime:
@@ -849,7 +849,9 @@ def outputXML(currentTime, newCells, stormCells, changedCells, outDir, historyPa
 	
 	for cell in newCells:
 		for i in range(0, len(newCells[cell]['xml'])):
-			if names[i] == 'RowName': values[i].append(newCells[cell]['track'])
+			if names[i] == 'RowName': 
+				names[i] = 'Track'
+				values[i].append(newCells[cell]['track'])
 			elif names[i] == 'Age': values[i].append(newCells[cell]['age'])
 			elif names[i] == 'StartTime': values[i].append(newCells[cell]['start'])
 			else: values[i].append(newCells[cell]['xml'][i][2])
@@ -940,9 +942,10 @@ def outputSegJson(currentTime, newCells, stormCells, changedCells, outDir, histo
 		dataDict = {}
 			
 		for i in range(len(newCells[cell]['xml'])):
-			if names[i] == 'RowName': dataDict[names[i]] = int(newCells[cell]['track'])
+			if names[i] == 'RowName': dataDict['Track'] = int(newCells[cell]['track'])
 			elif names[i] == 'Age': dataDict[names[i]] = float(newCells[cell]['age'])
 			elif names[i] == 'StartTime': dataDict[names[i]] = newCells[cell]['start']
+			elif names[i] == 'OldTrack': dataDict['OldTrack'] = int(newCells[cell]['oldtrack'])
 			else: dataDict[names[i]] = float(newCells[cell]['xml'][i][2])
 			
 		for i in range(len(headerNames)): 
