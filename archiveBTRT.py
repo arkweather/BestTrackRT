@@ -27,8 +27,8 @@ def getOptions():
 	parser.add_argument('end', type=str, metavar='end', help='End time in yyyymmdd')
 	parser.add_argument('inDir', type=str, metavar='inDir', help='Location of source files')
 	parser.add_argument('outDir', type=str, metavar='outDir', help='Name of output directory for new tracking files')
-	parser.add_argument('-i', '--itype', type=str, metavar='', default='ascii', help='Type of input file: ascii or json')
-	parser.add_argument('-t', '--otype', type=str, metavar='', default='ascii', help='Type of output file: ascii, json, or legacy')
+	parser.add_argument('-i', '--itype', type=str, metavar='', default='ascii', help='Type of input file: ascii, json, or xml')
+	parser.add_argument('-t', '--otype', type=str, metavar='', default='ascii', help='Type of output file: ascii, json, xml, seg_json, or legacy')
 	args = parser.parse_args()
 	return args
 
@@ -47,13 +47,17 @@ def runBTRT(start, end, dates, inDir, outDir, inType, outType):
 		
 		for filename in sorted(os.listdir(inDir)):
 			if filename.startswith('._'): continue
-			date = str(filename).split('.')[0].split('_')[3]
-			time = str(filename).split('.')[0].split('_')[4]
+			if inType == 'xml':
+				date = str(filename).split('.')[0].split('-')[0]
+				time = str(filename).split('.')[0].split('-')[1]
+			else:
+				date = str(filename).split('.')[0].split('_')[3]
+				time = str(filename).split('.')[0].split('_')[4]
 			fileDate = datetime.datetime.strptime(date + '_' + time, '%Y%m%d_%H%M%S')
-			print fileDate.date(), thisdate.date()
+			#print fileDate.date(), thisdate.date()
 			if fileDate.date() != thisdate.date(): continue
 			times.append(fileDate)
-	
+		
 		#outPath = '/localdata/ProbSevere/besttrack/btrt/'
 		#outDir = outPath + thisdate.strftime('%Y%m') + '/'
 		historyPath = outDir + 'history_' + thisdate.strftime('%Y%m%d')+ '.json'
@@ -63,6 +67,7 @@ def runBTRT(start, end, dates, inDir, outDir, inType, outType):
 			bufferTime = 3 # minutes
 			bufferDist = 10 # km
 			historyTime = 30 # minutes 
+			print currentTime
 		
 			if outType == 'legacy':	
 				stormCells, distanceRatio = btrt.besttrack_RT(currentTime, inDir, '', historyPath, bufferTime, bufferDist, historyTime, outDir, inType, outType)

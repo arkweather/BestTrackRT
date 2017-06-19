@@ -9,6 +9,7 @@ import datetime
 from shapely.geometry.polygon import Polygon
 from mpl_toolkits.basemap import Basemap
 import scipy.stats.mstats as stats
+from bs4 import BeautifulSoup
 
 # Mapping constants
 MIN_LAT = 20
@@ -316,6 +317,147 @@ def readProbSevereJson(inDir, inSuffix, historyPath, startTime, endTime):
 	print '\nSuccesfully loaded ' + str(numFiles) + ' json files.'
 	print 'Number of new cells: ' + str(len(newCells))
 	return newCells, stormCells, totNumCells, jFile
+	
+# Handle the xml files from segmotion	
+def readSegmotionXML(inDir, inSuffix, historyPath, startTime, endTime):
+	"""
+	Parses raw segmotion .xml files
+	
+	Parameters
+	----------
+	inDir : string
+		The input directory
+	inSuffix : string
+		The lowest subdirectory of the input directory
+	historyPath: string
+		The full file path (including extension) of the history json file
+	startTime : string
+		The earliest time to process
+	endTime : string
+		The latest time to process
+		
+	Returns
+	-------
+	Dictionary
+		newCells - Dictionary containing all cells added by the most current file
+	Dictionary
+		stormCells - Dictionary of storm cells from the history file or past ascii files
+	int
+		totNumCells - Number of cells in the stormCells dictionary		
+	"""
+
+	numFiles = 0
+	totNumCells = 0
+	stormCells = {}
+	newCells = {} 
+	
+	# Try to load the history file
+	try:
+		print 'Loading storm history...'
+		f = open(historyPath)
+		stormCells = json.load(f)
+		f.close
+		
+		# Remove cells older than start time
+		oldCells = []
+		for cell in stormCells:
+			stormCells[cell]['time'] = datetime.datetime.strptime(stormCells[cell]['time'], '%Y%m%d_%H%M%S')
+			if stormCells[cell]['time'] < startTime: oldCells.append(cell)
+		for cell in oldCells:
+			stormCells.pop(cell, None)
+		
+		print 'Number of old cells removed from history: ' + str(len(oldCells))
+		
+		if len(stormCells) > 0: 
+			startTime = endTime
+			totNumCells = max([int(key) for key in stormCells.keys()]) + 1
+			if totNumCells >= 1e7:
+				totNumCells = 0
+			print 'Sucessfully loaded history file.  Loading most recent data...'
+		else: 
+			print 'No recent storms in history.'
+			print 'Loading XML files from ' + str(startTime) + ' to ' + str(endTime) + '...'
+			
+	# If no history file, make one
+	except IOError, ValueError:
+		print 'Unable to find storm history file at ' + historyPath + '.'
+		print 'Loading XML files from ' + str(startTime) + ' to ' + str(endTime) + '...'
+	
+	# Read in ProbSevere files
+	currentFile = None
+	for root, dirs, files in os.walk(inDir):
+		if inSuffix != '' and not (files and not dirs and os.path.split(root)[-1] == inSuffix): continue
+		for xmlFile in files:
+			if xmlFile.endswith('.xml'):
+				
+				# Skip hidden files
+				if xmlFile.startswith('._'): continue
+				
+				# Check if file falls in date range
+				try:
+					fileDate = datetime.datetime.strptime(str(xmlFile).split('.')[0], '%Y%m%d-%H%M%S')
+				except ValueError:
+					print 'File ' + str(xmlFile) + ' has an invalid name.  Expected format YYYYMMDD-hhmmss.xml...'
+					continue
+				if not startTime <= fileDate <= endTime:
+					continue
+				if fileDate == endTime: currentFile = xmlFile
+				
+				# Open file
+				f = open(root + '/' + xmlFile)
+				xFile = xmlFile
+				lines = BeautifulSoup(f, 'html.parser').find_all('datacolumn')
+				f.close()
+				
+				print 'Reading ' + xmlFile
+				numFiles += 1
+				
+				numCells = len(lines[2].find_all('item'))
+				
+				f = open(root + '/' + xmlFile)
+				lines = BeautifulSoup(f, 'html.parser').find_all('data')
+				lines = str(lines[0]).split('</datacolumn>')
+				f.close()
+				
+				for i in range(0, numCells):
+				
+					data = []
+					
+					for line in lines:			
+								
+						try:
+							name = line.split('"')[1]
+							units = line.split('"')[3]
+							value = line.split('item value')[i+1].split('"')[1]
+							data.append((name, units, value))
+						except IndexError:
+							continue
+				
+						if name == 'LatRadius': latr = float(value)
+						elif name == 'Latitude': lat = float(value)
+						elif name == 'LonRadius': lonr = float(value)
+						elif name == 'Longitude': lon = float(value)
+						elif name == 'MotionEast': meast = float(value)
+						elif name == 'MotionSouth': msouth = float(value)
+						elif name == 'Orientation': orientation = float(value)
+						elif name == 'RowName': track = int(value)
+						elif name == 'Age': age = float(value)
+						elif name == 'StartTime': start = datetime.datetime.strptime(value, '%Y%m%d-%H%M%S')
+					
+					data.append(('OldRowName', 'dimensionless', str(track)))
+					cellID = totNumCells
+			
+					if fileDate == endTime:
+						newCells[cellID] = {'prob': 0, 'time': fileDate, 'latr': latr, 'lat': lat, 'lonr': lonr, 'lon': lon, 'meast': meast, 'age': age, 'start': start,
+											'msouth': msouth, 'orientation': 'NaN', 'track': track, 'shape_x': [], 'shape_y': [], 'xml': data, 'oldtrack':track}
+					else:
+						stormCells[cellID] = {'prob': 0, 'time': fileDate, 'latr': latr, 'lat': lat, 'lonr': lonr, 'lon': lon, 'meast': meast, 'age': age, 'start': start,
+												'msouth': msouth, 'orientation': orientation, 'track': track, 'shape_x': [], 'shape_y': [], 'xml': data, 'oldtrack':track}
+					totNumCells += 1
+					
+	print '\nSuccesfully loaded ' + str(numFiles) + ' xml files.'
+	print 'Number of new cells: ' + str(len(newCells))
+	return newCells, stormCells, totNumCells, root + '/' + currentFile
 
 #==================================================================================================================#
 #                                                                                                                  #
@@ -425,93 +567,94 @@ def compareTracks(newCells, stormTracks, bufferTime, bufferDist, distanceRatio, 
 				continue
 		
 		# If no matches found with the conventional algorithm, try the QLCS algorithm
-		currentlats = map(float, newCells[cell]['shape_y'])
-		currentlons = map(float, newCells[cell]['shape_x'])
-		currentObj = Polygon([(currentlons[i], currentlats[i]) for i in range(len(currentlats))])
-		currentProb = float(newCells[cell]['prob'])
+		if len(newCells[cell]['shape_y']) > 0:
+			currentlats = map(float, newCells[cell]['shape_y'])
+			currentlons = map(float, newCells[cell]['shape_x'])
+			currentObj = Polygon([(currentlons[i], currentlats[i]) for i in range(len(currentlats))])
+			currentProb = float(newCells[cell]['prob'])
 		
-		for track in squallRange:
-			# Make sure two storms don't have the same ID
-			if track in reservedTracks: continue			
+			for track in squallRange:
+				# Make sure two storms don't have the same ID
+				if track in reservedTracks: continue			
 			
-			# Get last cell in track
-			times = {}
-			for trackCell in stormTracks[track]['cells']:
-				times[trackCell['time'].timetuple()] = trackCell
-			lastCell = times[max(times.keys())]
+				# Get last cell in track
+				times = {}
+				for trackCell in stormTracks[track]['cells']:
+					times[trackCell['time'].timetuple()] = trackCell
+				lastCell = times[max(times.keys())]
 			
-			u_vel = (float(lastCell['meast']) / 1000.) / distanceRatio
-			v_vel = (-float(lastCell['msouth']) / 1000.) / distanceRatio
+				u_vel = (float(lastCell['meast']) / 1000.) / distanceRatio
+				v_vel = (-float(lastCell['msouth']) / 1000.) / distanceRatio
 			
-			# Apply a 5 km buffer around the cell and interpolate to the current time
-			oldlats = map(float, lastCell['shape_y'])
-			oldlons = map(float, lastCell['shape_x'])
+				# Apply a 5 km buffer around the cell and interpolate to the current time
+				oldlats = map(float, lastCell['shape_y'])
+				oldlons = map(float, lastCell['shape_x'])
 			
-			interpPoints = []
+				interpPoints = []
 			
-			# Calculate Centroid
-			points = [m(oldlons[i], oldlats[i]) for i in range(len(oldlats))]
-			poly = Polygon(points)
+				# Calculate Centroid
+				points = [m(oldlons[i], oldlats[i]) for i in range(len(oldlats))]
+				poly = Polygon(points)
 			
-			if not poly.is_valid:
+				if not poly.is_valid:
 				
-				polyCoords = [points]
-				polyCoords = [[tuple(val) for val in elem] for elem in polyCoords]
+					polyCoords = [points]
+					polyCoords = [[tuple(val) for val in elem] for elem in polyCoords]
 				
-				polyCoordsCorrected = []
-				for coord in polyCoords[0]:
-					if coord not in polyCoordsCorrected:
-						polyCoordsCorrected.append(coord)
-				poly = Polygon(polyCoordsCorrected)
+					polyCoordsCorrected = []
+					for coord in polyCoords[0]:
+						if coord not in polyCoordsCorrected:
+							polyCoordsCorrected.append(coord)
+					poly = Polygon(polyCoordsCorrected)
 
-			if not poly.is_valid:
-				poly = poly.convex_hull
+				if not poly.is_valid:
+					poly = poly.convex_hull
 
-			x0 = poly.centroid.x
-			y0 = poly.centroid.y
+				x0 = poly.centroid.x
+				y0 = poly.centroid.y
 	
-			# Calculate Buffer Points
-			for point in points:
-				x,y = point
-				dx = x - x0
-				dy = y - y0
-				theta = np.arctan(abs(dy)/float(abs(dx)))
+				# Calculate Buffer Points
+				for point in points:
+					x,y = point
+					dx = x - x0
+					dy = y - y0
+					theta = np.arctan(abs(dy)/float(abs(dx)))
 				
-				bufferSize = 5. / distanceRatio
-				dx2 = abs(bufferSize * np.cos(theta))
-				dy2 = abs(bufferSize * np.sin(theta))
+					bufferSize = 5. / distanceRatio
+					dx2 = abs(bufferSize * np.cos(theta))
+					dy2 = abs(bufferSize * np.sin(theta))
 		
-				if dx < 0: xb = x - dx2
-				else: xb = x + dx2
-				if dy < 0: yb = y - dy2
-				else: yb = y + dy2
+					if dx < 0: xb = x - dx2
+					else: xb = x + dx2
+					if dy < 0: yb = y - dy2
+					else: yb = y + dy2
 				
-				# After the buffer is applied, move the object downstream
-				xpoint = xb + u_vel * (total_seconds(cellTime - lastCell['time']))
-				ypoint = yb + v_vel * (total_seconds(cellTime - lastCell['time']))
+					# After the buffer is applied, move the object downstream
+					xpoint = xb + u_vel * (total_seconds(cellTime - lastCell['time']))
+					ypoint = yb + v_vel * (total_seconds(cellTime - lastCell['time']))
 		
-				interpPoints.append((m(xpoint, ypoint, inverse = True)[0], m(xpoint, ypoint, inverse = True)[1]))
+					interpPoints.append((m(xpoint, ypoint, inverse = True)[0], m(xpoint, ypoint, inverse = True)[1]))
 				
-			interpObj = Polygon(interpPoints)
+				interpObj = Polygon(interpPoints)
 			
-			# Compare cell to interpolated object
-			# Case for splitting QLCS objects
-			if interpObj.contains(currentObj.centroid):
-				if track not in reservedTracks:
-					if track not in qlcsObjects:
-						qlcsObjects[track] = {cell: currentProb}
-					else:
-						qlcsObjects[track][cell] = currentProb
-					continue
+				# Compare cell to interpolated object
+				# Case for splitting QLCS objects
+				if interpObj.contains(currentObj.centroid):
+					if track not in reservedTracks:
+						if track not in qlcsObjects:
+							qlcsObjects[track] = {cell: currentProb}
+						else:
+							qlcsObjects[track][cell] = currentProb
+						continue
 								
-			# Case for merging QLCS objects
-			elif currentObj.contains(interpObj.centroid):
-				if track not in reservedTracks:
-					if track not in qlcsObjects:
-						qlcsObjects[track] = {cell: currentProb}
-					else:
-						qlcsObjects[track][cell] = currentProb
-					continue
+				# Case for merging QLCS objects
+				elif currentObj.contains(interpObj.centroid):
+					if track not in reservedTracks:
+						if track not in qlcsObjects:
+							qlcsObjects[track] = {cell: currentProb}
+						else:
+							qlcsObjects[track][cell] = currentProb
+						continue
 					
 		# Do a final check to see if the object ID has been modified in previous runs
 		if newCells[cell]['track'] in modifiedTracksHistory.keys():
@@ -645,6 +788,185 @@ def outputJson(currentTime, newCells, stormCells, changedCells, outDir, historyP
 		json.dump(stormCells, outfile, sort_keys = True)
 	outfile.close()
 	
+# Handle XML input from segmotion		
+def outputXML(currentTime, newCells, stormCells, changedCells, outDir, historyPath, xmlFile):
+	"""
+	Creates a new xml and json file with the updated track information
+	
+	Parameters
+	----------
+	currentTime : datetime
+		The date/time of the most current xml file
+	newCells : Dictionary
+		Dictionary of the most current cells
+	stormCells : Dictionary
+		Dictionary containing all storm cells to be saved
+	changedCells : List
+		List of track IDs that were changed
+	outDir : string
+		Filepath where the output files will be saved
+	historyPath : string
+		The full file path (including extension) of the history json file
+	xmlFile : File
+		The current xml file being processed to use as a template
+	"""
+	
+	# Save new xml file
+	filename = currentTime.strftime('%Y%m%d-%H%M%S') + '.xml'
+	print '\nSaving the most recent xml file: ' + filename
+	
+	xfile = open(xmlFile)
+	lines = xfile.readlines()
+	xfile.close()
+	
+	f = open(outDir + filename, 'w')	
+	
+	# Don't bother if there are no objects in the file
+	if len(newCells.keys()) < 1:
+		for line in lines:
+			f.write(line)
+		f.close()
+		
+		print 'Saving the new history file...'
+		for cell in stormCells:
+			stormCells[cell]['time'] = stormCells[cell]['time'].strftime('%Y%m%d_%H%M%S')
+		with open(historyPath, 'w') as outfile:
+			json.dump(stormCells, outfile, sort_keys = True, indent=1)
+		outfile.close()
+			
+		return
+	
+	# Otherwise write out the header info
+	for line in lines:
+		if not line.strip().startswith('<data>'):
+			f.write(line)
+		else:
+			break
+	f.write(' <data>\n')
+	names = [column[0] for column in newCells[newCells.keys()[0]]['xml']]
+	units = [column[1] for column in newCells[newCells.keys()[0]]['xml']]
+	values = [[] for i in range(0, len(names))]
+	
+	for cell in newCells:
+		for i in range(0, len(newCells[cell]['xml'])):
+			if names[i] == 'RowName': values[i].append(newCells[cell]['track'])
+			elif names[i] == 'Age': values[i].append(newCells[cell]['age'])
+			elif names[i] == 'StartTime': values[i].append(newCells[cell]['start'])
+			else: values[i].append(newCells[cell]['xml'][i][2])
+			
+	for j in range(0, len(names)):
+		f.write('  <datacolumn name="' + names[j] + '" units="' + units[j] + '">\n')
+		for k in range(0, len(values[j])):
+			f.write('   <item value="' + str(values[j][k]) + '"/>\n')
+		f.write('  </datacolumn>\n')
+		
+	f.write(' </data>\n')
+	f.write('</datatable>')
+	f.close()
+	
+	# Save new history file
+	print 'Saving the new history file...'
+	for cell in stormCells:
+		stormCells[cell]['time'] = stormCells[cell]['time'].strftime('%Y%m%d_%H%M%S')
+	with open(historyPath, 'w') as outfile:
+		json.dump(stormCells, outfile, sort_keys = True, indent=1)
+	outfile.close()
+	
+# Convert segmotion xml to json		
+def outputSegJson(currentTime, newCells, stormCells, changedCells, outDir, historyPath, xmlFile):
+	"""
+	Creates a new xml and json file with the updated track information
+	
+	Parameters
+	----------
+	currentTime : datetime
+		The date/time of the most current xml file
+	newCells : Dictionary
+		Dictionary of the most current cells
+	stormCells : Dictionary
+		Dictionary containing all storm cells to be saved
+	changedCells : List
+		List of track IDs that were changed
+	outDir : string
+		Filepath where the output files will be saved
+	historyPath : string
+		The full file path (including extension) of the history json file
+	xmlFile : File
+		The current xml file being processed to use as a template
+	"""
+	
+	# Save new json file
+	dataDicts = []
+	
+	filename = 'segmotion_' + currentTime.strftime('%Y%m%d-%H%M%S') + '.json'
+	print '\nSaving the most recent segmotion-json file: ' + filename
+	
+	xfile = open(xmlFile)
+	lines = xfile.readlines()
+	xfile.close()
+	
+	f = open(outDir + filename, 'w')	
+	
+	# Don't bother if there are no objects in the file
+	if len(newCells.keys()) < 1:
+		f.close()
+		
+		print 'Saving the new history file...'
+		for cell in stormCells:
+			stormCells[cell]['time'] = stormCells[cell]['time'].strftime('%Y%m%d_%H%M%S')
+		with open(historyPath, 'w') as outfile:
+			json.dump(stormCells, outfile, sort_keys = True, indent=1)
+		outfile.close()
+			
+		return
+	
+	# Otherwise write out the header info
+	headerNames = []
+	headerValues = []
+	
+	for line in lines:
+		if not line.strip().startswith('<data>'):
+			if line.strip().startswith('<datacolumn'):
+				headerNames.append(line.strip().split(' ')[1].split('"')[1])
+			elif line.strip().startswith('<item'):
+				headerValues.append(line.strip().split('"')[1])
+		else:
+			break
+	
+	names = [column[0] for column in newCells[newCells.keys()[0]]['xml']]
+	
+	# Get data from cells
+	for cell in newCells:
+		dataDict = {}
+			
+		for i in range(len(newCells[cell]['xml'])):
+			if names[i] == 'RowName': dataDict[names[i]] = int(newCells[cell]['track'])
+			elif names[i] == 'Age': dataDict[names[i]] = float(newCells[cell]['age'])
+			elif names[i] == 'StartTime': dataDict[names[i]] = newCells[cell]['start']
+			else: dataDict[names[i]] = float(newCells[cell]['xml'][i][2])
+			
+		for i in range(len(headerNames)): 
+			dataDict[headerNames[i]] = headerValues[i]
+			
+		dataDicts.append(dataDict)
+			
+	# Save JSON file
+	with open(outDir + filename, 'w') as outfile:
+		for jdict in dataDicts:
+			s = json.dumps(jdict, sort_keys = False).encode('ascii')
+			outfile.write(s + '\n')
+	outfile.close()		
+	
+	# Save new history file
+	print 'Saving the new history file...'
+	for cell in stormCells:
+		stormCells[cell]['time'] = stormCells[cell]['time'].strftime('%Y%m%d_%H%M%S')
+	with open(historyPath, 'w') as outfile:
+		json.dump(stormCells, outfile, sort_keys = True, indent=1)
+	outfile.close()
+
+
+	
 #==================================================================================================================#
 #                                                                                                                  #
 #  Main		                                                                                                       #
@@ -674,7 +996,7 @@ def besttrack_RT(currentTime, inDir, inSuffix, historyPath, bufferTime, bufferDi
 	outDir : string
 		Filepath where the output files will be saved
 	ftype : string
-		Type of input files to process (ascii or json)
+		Type of input files to process (ascii or json or xml)
 	"""
 		
 	print 'Running Best Track RT'
@@ -689,8 +1011,9 @@ def besttrack_RT(currentTime, inDir, inSuffix, historyPath, bufferTime, bufferDi
 	# Load storm history and most current file
 	if ftype == 'ascii': newCells, stormCells, totNumCells = readProbSevereAscii(inDir, inSuffix, historyPath, startTime, endTime)
 	elif ftype == 'json': newCells, stormCells, totNumCells, jFile = readProbSevereJson(inDir, inSuffix, historyPath, startTime, endTime)
+	elif ftype == 'xml': newCells, stormCells, totNumCells, xmlFile = readSegmotionXML(inDir, inSuffix, historyPath, startTime, endTime)
 	else: 
-		print 'Invalid file type. Expected "ascii" or "json"'
+		print 'Invalid file type. Expected "ascii" or "json" or "xml"'
 		return
 	
 	# Set up the btengine
@@ -792,21 +1115,33 @@ def besttrack_RT(currentTime, inDir, inSuffix, historyPath, bufferTime, bufferDi
 	print 'Final number of cells with new track ID: ' + str(len(newCells) - len(existingObjects))
 	print 'Number of broken tracks fixed: ' + str(len(changedCells))
 	
+	# Put all cells into the stormCells Dict
+	for cell in newCells:
+		stormCells[cell] = newCells[cell]
+		
+	# Update cell age and start times
+	stormTracks = bt.find_clusters(stormCells, stormCells.keys())
+	stormTracks = bt.theil_sen_batch(stormTracks)
+	
+	for track in stormTracks:
+		for cell in stormTracks[track]['cells']:
+			cell['start'] = stormTracks[track]['t0']
+			cell['age'] = total_seconds(cell['time'] - cell['start'])
+			cell['start'] = cell['start'].strftime('%Y%m%d_%H%M%S')
+	
 	#==================================================================================================================#
 	#                                                                                                                  #
 	#  Output			                                                                                               #
 	#                                                                                                                  #
 	#==================================================================================================================#
 	
-	# Put all cells into the stormCells Dict
-	for cell in newCells:
-		stormCells[cell] = newCells[cell]
-	
 	del stormTracks
 	
 	# Save output
 	if outtype == 'ascii': outputAscii(currentTime, newCells, stormCells, changedCells, outDir, historyPath)
 	elif outtype == 'json': outputJson(currentTime, newCells, stormCells, changedCells, outDir, historyPath, jFile)
+	elif outtype == 'xml': outputXML(currentTime, newCells, stormCells, changedCells, outDir, historyPath, xmlFile)
+	elif outtype == 'seg_json': outputSegJson(currentTime, newCells, stormCells, changedCells, outDir, historyPath, xmlFile)
 	
 	elif outtype == 'legacy': 
 		if not os.path.exists(outDir):
