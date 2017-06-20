@@ -72,6 +72,7 @@ def readProbSevereAscii(inDir, inSuffix, historyPath, startTime, endTime):
 		oldCells = []
 		for cell in stormCells:
 			stormCells[cell]['time'] = datetime.datetime.strptime(stormCells[cell]['time'], '%Y%m%d_%H%M%S')
+			stormCells[cell]['start'] = datetime.datetime.strptime(stormCells[cell]['start'], '%Y%m%d_%H%M%S')
 			if stormCells[cell]['time'] < startTime: oldCells.append(cell)
 		for cell in oldCells:
 			stormCells.pop(cell, None)
@@ -465,7 +466,7 @@ def readSegmotionXML(inDir, inSuffix, historyPath, startTime, endTime):
 #                                                                                                                  #
 #==================================================================================================================#
 
-def compareTracks(newCells, stormTracks, bufferTime, bufferDist, distanceRatio, existingObjects, modifiedTracksHistory, m):
+def compareTracks(newCells, stormTracks, bufferTime, bufferDist, distanceRatio, existingObjects, modifiedTracksHistory, m, bt):
 	"""
 	Function to match new cells with existing tracks
 
@@ -559,6 +560,7 @@ def compareTracks(newCells, stormTracks, bufferTime, bufferDist, distanceRatio, 
 				changedCells.append(cell)
 				reservedTracks.append(minTrack)
 				newCells[cell]['track'] = minTrack
+				stormTracks[minTrack]['cells'].append(newCells[cell])
 				
 				if counter % 10 == 0:
 					print '......' + str(counter) + ' of ' + str(len(newCells) - len(existingObjects)) + ' assigned......'
@@ -661,6 +663,9 @@ def compareTracks(newCells, stormTracks, bufferTime, bufferDist, distanceRatio, 
 			newCells[cell]['track'] = modifiedTracksHistory[newCells[cell]['track']]
 			reservedTracks.append(newCells[cell]['track'])
 			print '------------History correction----------'
+			
+		# Update track information
+		stormTracks = bt.theil_sen_batch(stormTracks)
 		
 		if counter % 10 == 0:
 			print '......' + str(counter) + ' of ' + str(len(newCells) - len(existingObjects)) + ' assigned......'
@@ -916,6 +921,7 @@ def outputSegJson(currentTime, newCells, stormCells, changedCells, outDir, histo
 		print 'Saving the new history file...'
 		for cell in stormCells:
 			stormCells[cell]['time'] = stormCells[cell]['time'].strftime('%Y%m%d_%H%M%S')
+			stormCells[cell]['start'] = stormCells[cell]['start'].strftime('%Y%m%d_%H%M%S')
 		with open(historyPath, 'w') as outfile:
 			json.dump(stormCells, outfile, sort_keys = True, indent=1)
 		outfile.close()
@@ -939,6 +945,13 @@ def outputSegJson(currentTime, newCells, stormCells, changedCells, outDir, histo
 	
 	# Get data from cells
 	for cell in newCells:
+		
+		# Last ditch attempt to catch any datetimes that slipped through...
+		if type(newCells[cell]['time']) is datetime.datetime:
+			newCells[cell]['time'] = newCells[cell]['time'].strftime('%Y%m%d_%H%M%S')
+		if type(newCells[cell]['start']) is datetime.datetime:
+			newCells[cell]['start'] = newCells[cell]['start'].strftime('%Y%m%d_%H%M%S')
+		
 		dataDict = {}
 			
 		for i in range(len(newCells[cell]['xml'])):
@@ -946,6 +959,9 @@ def outputSegJson(currentTime, newCells, stormCells, changedCells, outDir, histo
 			elif names[i] == 'Age': dataDict[names[i]] = float(newCells[cell]['age'])
 			elif names[i] == 'StartTime': dataDict[names[i]] = newCells[cell]['start']
 			elif names[i] == 'OldTrack': dataDict['OldTrack'] = int(newCells[cell]['oldtrack'])
+			elif names[i] == 'MotionEast': dataDict['MotionEast'] = float(newCells[cell]['meast'])
+			elif names[i] == 'MotionSouth': dataDict['MotionSouth'] = float(newCells[cell]['msouth'])
+			elif names[i] == 'Speed': dataDict['Speed'] = float(newCells[cell]['speed'])
 			else: dataDict[names[i]] = float(newCells[cell]['xml'][i][2])
 			
 		for i in range(len(headerNames)): 
@@ -963,7 +979,10 @@ def outputSegJson(currentTime, newCells, stormCells, changedCells, outDir, histo
 	# Save new history file
 	print 'Saving the new history file...'
 	for cell in stormCells:
-		stormCells[cell]['time'] = stormCells[cell]['time'].strftime('%Y%m%d_%H%M%S')
+		if type(stormCells[cell]['time']) is datetime.datetime:
+			stormCells[cell]['time'] = stormCells[cell]['time'].strftime('%Y%m%d_%H%M%S')
+		if type(stormCells[cell]['start']) is datetime.datetime:
+			stormCells[cell]['start'] = stormCells[cell]['start'].strftime('%Y%m%d_%H%M%S')
 	with open(historyPath, 'w') as outfile:
 		json.dump(stormCells, outfile, sort_keys = True, indent=1)
 	outfile.close()
@@ -1105,7 +1124,7 @@ def besttrack_RT(currentTime, inDir, inSuffix, historyPath, bufferTime, bufferDi
 	stormTracks = bt.find_clusters(stormCells, stormCells.keys())
 	stormTracks = bt.theil_sen_batch(stormTracks)
 	
-	newCells, changedCells = compareTracks(newCells, stormTracks, bufferTime, bufferDist, distanceRatio, existingObjects, modifiedTracksHistory, m)
+	newCells, changedCells = compareTracks(newCells, stormTracks, bufferTime, bufferDist, distanceRatio, existingObjects, modifiedTracksHistory, m, bt)
 	
 	# Update the tracks
 	for cell in newCells:
@@ -1124,13 +1143,36 @@ def besttrack_RT(currentTime, inDir, inSuffix, historyPath, bufferTime, bufferDi
 		
 	# Update cell age and start times
 	stormTracks = bt.find_clusters(stormCells, stormCells.keys())
-	stormTracks = bt.theil_sen_batch(stormTracks)
-	
+		
 	for track in stormTracks:
+		times = []
+		ids = []
+		
+		# Sort cells by time
 		for cell in stormTracks[track]['cells']:
-			cell['start'] = stormTracks[track]['t0']
-			cell['age'] = total_seconds(cell['time'] - cell['start'])
-			cell['start'] = cell['start'].strftime('%Y%m%d_%H%M%S')
+			ID = stormCells.keys()[stormCells.values().index(cell)]
+			if ID not in ids: 
+				ids.append(ID)
+				times.append(cell['time'])
+			
+		ids = [ID for (time, ID) in sorted(zip(times, ids))]
+		
+		for i in range(len(ids)):
+			if ids[i] in newCells:
+			
+				if type(stormCells[ids[0]]['start']) is unicode: # Yes I'm still fighting this stupid issue
+					stormCells[ids[0]]['start'] = datetime.datetime.strptime(stormCells[ids[0]]['start'], '%Y%m%d_%H%M%S')
+			
+				newCells[ids[i]]['start'] = stormCells[ids[0]]['start']
+				newCells[ids[i]]['age'] = total_seconds(newCells[ids[i]]['time'] - newCells[ids[i]]['start'])
+				if i > 0:
+					dt = total_seconds(newCells[ids[i]]['time'] - stormCells[ids[i-1]]['time'])
+					dx = newCells[ids[i]]['x'] - stormCells[ids[i-1]]['x']
+					dy = newCells[ids[i]]['y'] - stormCells[ids[i-1]]['y']
+					newCells[ids[i]]['meast'] = (dx / dt) * distanceRatio * 1000. # m/s
+					newCells[ids[i]]['msouth'] = -(dy / dt) * distanceRatio * 1000. # m/s
+				newCells[ids[i]]['speed'] = np.sqrt(newCells[ids[i]]['meast']**2 + newCells[ids[i]]['msouth']**2) # m/s
+
 	
 	#==================================================================================================================#
 	#                                                                                                                  #
@@ -1152,11 +1194,14 @@ def besttrack_RT(currentTime, inDir, inSuffix, historyPath, bufferTime, bufferDi
 		print 'Saving the new history file...'
 		for cell in stormCells:
 			stormCells[cell]['time'] = stormCells[cell]['time'].strftime('%Y%m%d_%H%M%S')
+			stormCells[cell]['start'] = stormCells[ids[i]]['start'].strftime('%Y%m%d_%H%M%S')
 		with open(historyPath, 'w') as outfile:
 			json.dump(stormCells, outfile, sort_keys = True)
 		outfile.close()
 		for cell in stormCells:
 			stormCells[cell]['time'] = datetime.datetime.strptime(stormCells[cell]['time'],'%Y%m%d_%H%M%S')
+			stormCells[cell]['start'] = datetime.datetime.strptime(stormCells[cell]['start'],'%Y%m%d_%H%M%S')
+			
 		return stormCells, distanceRatio
 	
 	else: print 'Something went horribly wrong... (Bad file type)'
