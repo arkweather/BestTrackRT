@@ -27,15 +27,18 @@ def getOptions():
 	parser.add_argument('end', type=str, metavar='end', help='End time in yyyymmdd')
 	parser.add_argument('inDir', type=str, metavar='inDir', help='Location of source files')
 	parser.add_argument('outDir', type=str, metavar='outDir', help='Name of output directory for new tracking files')
-	parser.add_argument('-i', '--itype', type=str, metavar='', default='ascii', help='Type of input file: ascii, json, or xml')
-	parser.add_argument('-t', '--otype', type=str, metavar='', default='ascii', help='Type of output file: ascii, json, xml, seg_json, or legacy')
+	parser.add_argument('-it', '--itype', type=str, metavar='', default='ascii', help='Type of input file: ascii, json, or xml')
+	parser.add_argument('-ot', '--otype', type=str, metavar='', default='ascii', help='Type of output file: ascii, json, xml, seg_json, or legacy')
+	parser.add_argument('-bt', '--buffertime', type=int, metavar='', default=2, help='Maximum time (minutes) between cells that can be considered for merging')
+	parser.add_argument('-bd', '--bufferdist', type=int, metavar='', default=10, help='Maximum distance (km) between cells that can be considered for merging')
+	parser.add_argument('-ht', '--historytime', type=int, metavar='', default=30, help='Amount of timesteps (minutes) to keep cells in history')
 	args = parser.parse_args()
 	return args
 
 """
 Run the besttrack_RT code for multiple days
 """
-def runBTRT(start, end, dates, inDir, outDir, inType, outType):
+def runBTRT(start, end, dates, inDir, outDir, inType, outType, bufferTime, bufferDist, historyTime):
 	
 	for thisdate in dates:
 	
@@ -63,10 +66,7 @@ def runBTRT(start, end, dates, inDir, outDir, inType, outType):
 		historyPath = outDir + 'history_' + thisdate.strftime('%Y%m%d')+ '.json'
 	
 		for time in times:
-			currentTime = time		
-			bufferTime = 3 # minutes
-			bufferDist = 10 # km
-			historyTime = 30 # minutes 
+			currentTime = time 
 			print currentTime
 		
 			if outType == 'legacy':	
@@ -181,6 +181,9 @@ if __name__ == '__main__':
 	outDir = args['outDir']
 	inType = args['itype']
 	outType = args['otype']
+	bufferTime = args['buffertime']
+	bufferDist = args['bufferdist']
+	historyTime = args['historytime']
 	
 	# TODO: I'm not sure this works...
 	if len(dates) > 1:
@@ -197,6 +200,6 @@ if __name__ == '__main__':
 			pool.terminate()
 	
 	else:
-		runBTRT(start, end, dates, inDir, outDir, inType, outType)
+		runBTRT(start, end, dates, inDir, outDir, inType, outType, bufferTime, bufferDist, historyTime)
 
 	print timeit.default_timer() - start_time
