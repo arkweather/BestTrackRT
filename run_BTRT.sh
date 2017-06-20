@@ -29,7 +29,7 @@ echo $SLURM_ARRAY_TASK_ID
 #echo $in_dir
 #echo $(seq -f "%02g" 9 30)
 
-python archiveBTRT.py $year$start_mon$start_day $year$end_mon$end_day $in_dir $out_dir -i xml -t seg_json
+python archiveBTRT.py $year$start_mon$start_day $year$end_mon$end_day $in_dir $out_dir -it xml -ot seg_json -bt 5 -bd 10 -ht 30
 
 
 
