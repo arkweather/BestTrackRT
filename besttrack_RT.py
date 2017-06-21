@@ -72,7 +72,6 @@ def readProbSevereAscii(inDir, inSuffix, historyPath, startTime, endTime):
 		oldCells = []
 		for cell in stormCells:
 			stormCells[cell]['time'] = datetime.datetime.strptime(stormCells[cell]['time'], '%Y%m%d_%H%M%S')
-			stormCells[cell]['start'] = datetime.datetime.strptime(stormCells[cell]['start'], '%Y%m%d_%H%M%S')
 			if stormCells[cell]['time'] < startTime: oldCells.append(cell)
 		for cell in oldCells:
 			stormCells.pop(cell, None)
@@ -363,6 +362,7 @@ def readSegmotionXML(inDir, inSuffix, historyPath, startTime, endTime):
 		oldCells = []
 		for cell in stormCells:
 			stormCells[cell]['time'] = datetime.datetime.strptime(stormCells[cell]['time'], '%Y%m%d_%H%M%S')
+			stormCells[cell]['start'] = datetime.datetime.strptime(stormCells[cell]['start'], '%Y%m%d_%H%M%S')
 			if stormCells[cell]['time'] < startTime: oldCells.append(cell)
 		for cell in oldCells:
 			stormCells.pop(cell, None)
@@ -561,6 +561,7 @@ def compareTracks(newCells, stormTracks, bufferTime, bufferDist, distanceRatio, 
 				reservedTracks.append(minTrack)
 				newCells[cell]['track'] = minTrack
 				stormTracks[minTrack]['cells'].append(newCells[cell])
+				stormTracks[minTrack] = bt.theil_sen_single(stormTracks[minTrack])
 				
 				if counter % 10 == 0:
 					print '......' + str(counter) + ' of ' + str(len(newCells) - len(existingObjects)) + ' assigned......'
@@ -663,9 +664,6 @@ def compareTracks(newCells, stormTracks, bufferTime, bufferDist, distanceRatio, 
 			newCells[cell]['track'] = modifiedTracksHistory[newCells[cell]['track']]
 			reservedTracks.append(newCells[cell]['track'])
 			print '------------History correction----------'
-			
-		# Update track information
-		stormTracks = bt.theil_sen_batch(stormTracks)
 		
 		if counter % 10 == 0:
 			print '......' + str(counter) + ' of ' + str(len(newCells) - len(existingObjects)) + ' assigned......'
@@ -853,12 +851,21 @@ def outputXML(currentTime, newCells, stormCells, changedCells, outDir, historyPa
 	values = [[] for i in range(0, len(names))]
 	
 	for cell in newCells:
+		# Last ditch attempt to catch any datetimes that slipped through...
+		if type(newCells[cell]['time']) is datetime.datetime:
+			newCells[cell]['time'] = newCells[cell]['time'].strftime('%Y%m%d_%H%M%S')
+		if type(newCells[cell]['start']) is datetime.datetime:
+			newCells[cell]['start'] = newCells[cell]['start'].strftime('%Y%m%d_%H%M%S')
+	
 		for i in range(0, len(newCells[cell]['xml'])):
 			if names[i] == 'RowName': 
 				names[i] = 'Track'
 				values[i].append(newCells[cell]['track'])
 			elif names[i] == 'Age': values[i].append(newCells[cell]['age'])
 			elif names[i] == 'StartTime': values[i].append(newCells[cell]['start'])
+			elif names[i] == 'MotionEast': values[i].append(str(newCells[cell]['meast']))
+			elif names[i] == 'MotionSouth': values[i].append(str(newCells[cell]['msouth']))
+			elif names[i] == 'Speed': values[i].append(str(newCells[cell]['speed']))
 			else: values[i].append(newCells[cell]['xml'][i][2])
 			
 	for j in range(0, len(names)):
@@ -874,7 +881,10 @@ def outputXML(currentTime, newCells, stormCells, changedCells, outDir, historyPa
 	# Save new history file
 	print 'Saving the new history file...'
 	for cell in stormCells:
-		stormCells[cell]['time'] = stormCells[cell]['time'].strftime('%Y%m%d_%H%M%S')
+		if type(stormCells[cell]['time']) is datetime.datetime:
+			stormCells[cell]['time'] = stormCells[cell]['time'].strftime('%Y%m%d_%H%M%S')
+		if type(stormCells[cell]['start']) is datetime.datetime:
+			stormCells[cell]['start'] = stormCells[cell]['start'].strftime('%Y%m%d_%H%M%S')
 	with open(historyPath, 'w') as outfile:
 		json.dump(stormCells, outfile, sort_keys = True, indent=1)
 	outfile.close()
@@ -1142,36 +1152,42 @@ def besttrack_RT(currentTime, inDir, inSuffix, historyPath, bufferTime, bufferDi
 		stormCells[cell] = newCells[cell]
 		
 	# Update cell age and start times
-	stormTracks = bt.find_clusters(stormCells, stormCells.keys())
+	# This only works on segmotion data right now
+	if ftype == 'xml':
+		stormTracks = bt.find_clusters(stormCells, stormCells.keys())
 		
-	for track in stormTracks:
-		times = []
-		ids = []
+		for track in stormTracks:
+			times = []
+			ids = []
 		
-		# Sort cells by time
-		for cell in stormTracks[track]['cells']:
-			ID = stormCells.keys()[stormCells.values().index(cell)]
-			if ID not in ids: 
-				ids.append(ID)
-				times.append(cell['time'])
+			# Sort cells by time
+			for cell in stormTracks[track]['cells']:
+				ID = stormCells.keys()[stormCells.values().index(cell)]
+				if ID not in ids: 
+					ids.append(ID)
+					times.append(cell['time'])
 			
-		ids = [ID for (time, ID) in sorted(zip(times, ids))]
+			ids = [ID for (time, ID) in sorted(zip(times, ids))]
 		
-		for i in range(len(ids)):
-			if ids[i] in newCells:
+			for i in range(len(ids)):
+				if ids[i] in newCells:
 			
-				if type(stormCells[ids[0]]['start']) is unicode: # Yes I'm still fighting this stupid issue
-					stormCells[ids[0]]['start'] = datetime.datetime.strptime(stormCells[ids[0]]['start'], '%Y%m%d_%H%M%S')
+					if type(stormCells[ids[0]]['start']) is unicode: # Yes I'm still fighting this stupid issue
+						stormCells[ids[0]]['start'] = datetime.datetime.strptime(stormCells[ids[0]]['start'], '%Y%m%d_%H%M%S')
 			
-				newCells[ids[i]]['start'] = stormCells[ids[0]]['start']
-				newCells[ids[i]]['age'] = total_seconds(newCells[ids[i]]['time'] - newCells[ids[i]]['start'])
-				if i > 0:
-					dt = total_seconds(newCells[ids[i]]['time'] - stormCells[ids[i-1]]['time'])
-					dx = newCells[ids[i]]['x'] - stormCells[ids[i-1]]['x']
-					dy = newCells[ids[i]]['y'] - stormCells[ids[i-1]]['y']
-					newCells[ids[i]]['meast'] = (dx / dt) * distanceRatio * 1000. # m/s
-					newCells[ids[i]]['msouth'] = -(dy / dt) * distanceRatio * 1000. # m/s
-				newCells[ids[i]]['speed'] = np.sqrt(newCells[ids[i]]['meast']**2 + newCells[ids[i]]['msouth']**2) # m/s
+					newCells[ids[i]]['start'] = stormCells[ids[0]]['start']
+					newCells[ids[i]]['age'] = total_seconds(newCells[ids[i]]['time'] - newCells[ids[i]]['start'])
+					if i > 0:
+						dt = total_seconds(newCells[ids[i]]['time'] - stormCells[ids[i-1]]['time'])
+						dx = newCells[ids[i]]['x'] - stormCells[ids[i-1]]['x']
+						dy = newCells[ids[i]]['y'] - stormCells[ids[i-1]]['y']
+						try:
+							newCells[ids[i]]['meast'] = (dx / dt) * distanceRatio * 1000. # m/s
+							newCells[ids[i]]['msouth'] = -(dy / dt) * distanceRatio * 1000. # m/s
+						except ZeroDivisionError:
+							newCells[ids[i]]['meast'] = 0 # m/s
+							newCells[ids[i]]['msouth'] = 0
+					newCells[ids[i]]['speed'] = np.sqrt(newCells[ids[i]]['meast']**2 + newCells[ids[i]]['msouth']**2) # m/s
 
 	
 	#==================================================================================================================#
@@ -1194,13 +1210,13 @@ def besttrack_RT(currentTime, inDir, inSuffix, historyPath, bufferTime, bufferDi
 		print 'Saving the new history file...'
 		for cell in stormCells:
 			stormCells[cell]['time'] = stormCells[cell]['time'].strftime('%Y%m%d_%H%M%S')
-			stormCells[cell]['start'] = stormCells[ids[i]]['start'].strftime('%Y%m%d_%H%M%S')
+			#stormCells[cell]['start'] = stormCells[ids[i]]['start'].strftime('%Y%m%d_%H%M%S')
 		with open(historyPath, 'w') as outfile:
 			json.dump(stormCells, outfile, sort_keys = True)
 		outfile.close()
 		for cell in stormCells:
 			stormCells[cell]['time'] = datetime.datetime.strptime(stormCells[cell]['time'],'%Y%m%d_%H%M%S')
-			stormCells[cell]['start'] = datetime.datetime.strptime(stormCells[cell]['start'],'%Y%m%d_%H%M%S')
+			#stormCells[cell]['start'] = datetime.datetime.strptime(stormCells[cell]['start'],'%Y%m%d_%H%M%S')
 			
 		return stormCells, distanceRatio
 	
