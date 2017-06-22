@@ -273,7 +273,7 @@ def readProbSevereJson(inDir, inSuffix, historyPath, startTime, endTime):
 				index = 0
 				for feature in jFile['features']:
 					lats = [point[1] for point in feature['geometry']['coordinates'][0]]
-					lons = [point[1] for point in feature['geometry']['coordinates'][0]]
+					lons = [point[0] for point in feature['geometry']['coordinates'][0]]
 					track = int(feature['properties']['ID'])
 					prob = int(feature['properties']['PROB'])
 					meast = feature['properties']['MOTION_EAST']
@@ -1230,11 +1230,11 @@ if __name__ == '__main__':
 	
 	currentTime = datetime.datetime.strptime('20150506_203639', '%Y%m%d_%H%M%S')
 	inDir = '/localdata/ProbSevere/new_json/20160901'
-	outDir = '/localdata/ProbSevere/new_json/test2/'
-	historyPath = '/localdata/ProbSevere/new_json/test2/history.json'
+	outDir = '/localdata/ProbSevere/new_json/test/'
+	historyPath = '/localdata/ProbSevere/new_json/test/history.json'
 	bufferTime = 3 # minutes
 	bufferDist = 10 # km
-	historyTime = 2 * 60 # minutes (2 hours)
+	historyTime = 30 # minutes
 	
 	besttrack_RT(currentTime, inDir, '', historyPath, bufferTime, bufferDist, historyTime, outDir, 'json')
 	

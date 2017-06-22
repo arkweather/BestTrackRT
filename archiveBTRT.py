@@ -29,7 +29,7 @@ def getOptions():
 	parser.add_argument('outDir', type=str, metavar='outDir', help='Name of output directory for new tracking files')
 	parser.add_argument('-it', '--itype', type=str, metavar='', default='ascii', help='Type of input file: ascii, json, or xml')
 	parser.add_argument('-ot', '--otype', type=str, metavar='', default='ascii', help='Type of output file: ascii, json, xml, seg_json, or legacy')
-	parser.add_argument('-bt', '--buffertime', type=int, metavar='', default=2, help='Maximum time (minutes) between cells that can be considered for merging')
+	parser.add_argument('-bt', '--buffertime', type=int, metavar='', default=3, help='Maximum time (minutes) between cells that can be considered for merging')
 	parser.add_argument('-bd', '--bufferdist', type=int, metavar='', default=10, help='Maximum distance (km) between cells that can be considered for merging')
 	parser.add_argument('-ht', '--historytime', type=int, metavar='', default=30, help='Amount of timesteps (minutes) to keep cells in history')
 	args = parser.parse_args()
