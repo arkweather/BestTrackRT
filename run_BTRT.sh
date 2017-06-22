@@ -20,7 +20,6 @@ end_day=${DAYS[$SLURM_ARRAY_TASK_ID]}
 
 start_month=12
 start_year=2014
-start_day=31
 
 end_month=$start_month
 let end_day=$start_day+1

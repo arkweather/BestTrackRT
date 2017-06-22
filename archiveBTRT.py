@@ -32,6 +32,7 @@ def getOptions():
 	parser.add_argument('-bt', '--buffertime', type=int, metavar='', default=3, help='Maximum time (minutes) between cells that can be considered for merging')
 	parser.add_argument('-bd', '--bufferdist', type=int, metavar='', default=10, help='Maximum distance (km) between cells that can be considered for merging')
 	parser.add_argument('-ht', '--historytime', type=int, metavar='', default=30, help='Amount of timesteps (minutes) to keep cells in history')
+	parser.add_argument('-cd', '--convectiveday', action='store_true', default=False, help='Set this flag if your file structure is in convective days')
 	args = parser.parse_args()
 	return args
 
@@ -175,6 +176,9 @@ if __name__ == '__main__':
 	args = vars(getOptions())
 	start = datetime.datetime.strptime(args['start'], '%Y%m%d')
 	end = datetime.datetime.strptime(args['end'], '%Y%m%d')
+	if args['convectiveday']: 
+		print 'Configuring to process convective days...'
+		end += datetime.timedelta(days=1)
 	dates = [start + datetime.timedelta(days=x) for x in range((end-start).days + 1)]
 	
 	inDir = args['inDir']
@@ -186,20 +190,20 @@ if __name__ == '__main__':
 	historyTime = args['historytime']
 	
 	# TODO: I'm not sure this works...
-	if len(dates) > 1:
-		subsets = []
-		numPerProc = int(np.ceil(float(len(dates)) / multiprocessing.cpu_count()))
-		for k in xrange(0, len(dates), numPerProc):
-			subsets.append(dates[k:k+numPerProc])
-	
-		with closing(Pool(processes=multiprocessing.cpu_count(), maxtasksperchild = 1)) as pool:
-			[pool.apply_async(runBTRT, (start, end, subsets[l], inDir, outDir, inType, outType,)) for l in range(len(subsets))]
-		
-			pool.close()
-			pool.join()
-			pool.terminate()
-	
-	else:
-		runBTRT(start, end, dates, inDir, outDir, inType, outType, bufferTime, bufferDist, historyTime)
+	#if len(dates) > 1:
+	#	subsets = []
+	#	numPerProc = int(np.ceil(float(len(dates)) / multiprocessing.cpu_count()))
+	#	for k in xrange(0, len(dates), numPerProc):
+	#		subsets.append(dates[k:k+numPerProc])
+	#
+	#	with closing(Pool(processes=multiprocessing.cpu_count(), maxtasksperchild = 1)) as pool:
+	#		[pool.apply_async(runBTRT, (start, end, subsets[l], inDir, outDir, inType, outType,)) for l in range(len(subsets))]
+	#	
+	#		pool.close()
+	#		pool.join()
+	#		pool.terminate()
+	#
+	#else:
+	runBTRT(start, end, dates, inDir, outDir, inType, outType, bufferTime, bufferDist, historyTime)
 
 	print timeit.default_timer() - start_time
