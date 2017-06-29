@@ -1,4 +1,17 @@
-#from besttrack import btengine
+"""
+ Corrects unjustified track breakages from third party storm identification and tracking algorithms
+
+ Best Track: Real Time (BTRT) is a Python package designed to read in the output of a
+ third-party storm identification and tracking algorithm (i.e. WDSS-II segmotion; ProbSevere)
+ and improve upon that algorithm’s tracking by correcting unjustifiable breaks in an object’s
+ track. BTRT is loosely modeled after the WDSS-II besttrack algorithm, but modified to support
+ real-time processing of an operational model’s output.
+
+ Author :	David Harrison
+ Date   :	April 2017
+
+"""
+
 from btengine import btengine
 import json
 import geojson
@@ -18,7 +31,7 @@ MIN_LON = -119
 MAX_LON = -62
 
 # Function definition
-#total_seconds = datetime.timedelta.total_seconds
+# Adds support for versions < Python 2.7
 def total_seconds(timedelta):
 	return((timedelta.microseconds + 0.0 + (timedelta.seconds + timedelta.days * 24 * 3600) * 10 ** 6) / 10 ** 6)
 	
@@ -476,7 +489,7 @@ def compareTracks(newCells, stormTracks, bufferTime, bufferDist, distanceRatio, 
 	Parameters
 	----------
 	newCells : Dictionary
-		Dictionary of storCells that don't match an existing track
+		Dictionary of stormCells that don't match an existing track
 	stormTracks : Dictionary
 		Full stormTracks dictionary containing information about the current 
 		tracks and the cells contained within them
@@ -493,6 +506,8 @@ def compareTracks(newCells, stormTracks, bufferTime, bufferDist, distanceRatio, 
 		object ID and the value is the modified value
 	m : Basemap
 		Current map projection
+	bt : btengine
+		The active btengine
 	
 	Returns
 	-------
@@ -727,8 +742,6 @@ def outputAscii(currentTime, newCells, stormCells, changedCells, outDir, history
 		newCells[cell]['ascii'][8] = str(newCells[cell]['track'])
 		newCells[cell]['ascii'][-1] = newCells[cell]['ascii'][-1].rstrip()
 		newCells[cell]['ascii'].append(str(newCells[cell]['oldtrack']) + '\n')
-		#if cell in changedCells: newCells[cell]['ascii'].append('True\n')
-		#else: newCells[cell]['ascii'].append('False\n')
 		f.write(':'.join(newCells[cell]['ascii']))
 	f.close()
 	
@@ -759,6 +772,8 @@ def outputJson(currentTime, newCells, stormCells, changedCells, outDir, historyP
 		Filepath where the output files will be saved
 	historyPath : string
 		The full file path (including extension) of the history json file
+	jFile : Dictionary
+		The json dictionary from the original active json file
 	"""
 	
 	# Save new json file
@@ -773,6 +788,7 @@ def outputJson(currentTime, newCells, stormCells, changedCells, outDir, historyP
 
 	s = json.dumps(jFile, sort_keys = False, indent = 1).encode('ascii')
 	
+	# Fix string formatting
 	with open(outDir + filename, 'w') as outfile:
 		for line in s.split('\n'):
 			if 'coordinates' in line:
@@ -1029,6 +1045,8 @@ def besttrack_RT(currentTime, inDir, inSuffix, historyPath, bufferTime, bufferDi
 		Filepath where the output files will be saved
 	ftype : string
 		Type of input files to process (ascii or json or xml)
+	outtype : string
+		Type of file to output (ascii, json, xml, or seg_json)
 	"""
 		
 	print 'Running Best Track RT'
@@ -1220,7 +1238,7 @@ def besttrack_RT(currentTime, inDir, inSuffix, historyPath, bufferTime, bufferDi
 			
 		return stormCells, distanceRatio
 	
-	else: print 'Something went horribly wrong... (Bad file type)'
+	else: print 'Invalid file type. Expected "ascii", "json", "xml", or "seg_json"'
 	
 	print 'Best Track RT complete!\n'
 	

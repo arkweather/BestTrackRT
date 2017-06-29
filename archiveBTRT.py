@@ -1,3 +1,15 @@
+"""
+ Post-processing BTRT application
+
+ archiveBTRT allows users to quickly and easily run the BTRT algorithm on archived 
+ or non-current data files over long time ranges.  This works for all BTRT valid 
+ file input and output types.  See the documentation for more information.
+
+ Author :	David Harrison
+ Date   :	May 2017
+
+"""
+
 import besttrack_RT as btrt
 from btengine import btengine
 import datetime
@@ -18,9 +30,12 @@ MAX_LAT = 51
 MIN_LON = -119
 MAX_LON = -62
 
+# Function definition
+# Adds support for versions < Python 2.7
 def total_seconds(timedelta):
 	return((timedelta.microseconds + 0.0 + (timedelta.seconds + timedelta.days * 24 * 3600) * 10 ** 6) / 10 ** 6)
-	
+
+# Arg parse	
 def getOptions():
 	parser = argparse.ArgumentParser()
 	parser.add_argument('start', type=str, metavar='start', help='Start time in yyyymmdd')
@@ -36,10 +51,30 @@ def getOptions():
 	args = parser.parse_args()
 	return args
 
-"""
-Run the besttrack_RT code for multiple days
-"""
-def runBTRT(start, end, dates, inDir, outDir, inType, outType, bufferTime, bufferDist, historyTime):
+
+def runBTRT(dates, inDir, outDir, inType, outType, bufferTime, bufferDist, historyTime):
+	"""
+	Run the besttrack_RT code for multiple days
+
+	Parameters
+	----------
+	dates : list
+		List of datetime.datetime objects that represent the days that should be processed
+	inDir : string
+		The input directory
+	outDir : string
+		Filepath where the output files will be saved
+	inType : string
+		Type of input files to process (ascii or json or xml)
+	outType : string
+		Type of file to output (ascii, json, xml, or seg_json)
+	bufferTime : int
+		The time threshold to use when associating cells with a track (minutes)
+	bufferDist : int
+		The distance threshold to use when associating cells with a track (km)
+	historyTime : int
+		How long to keep old cells in the history file (minutes)	
+	"""
 	
 	for thisdate in dates:
 	
@@ -58,12 +93,9 @@ def runBTRT(start, end, dates, inDir, outDir, inType, outType, bufferTime, buffe
 				date = str(filename).split('.')[0].split('_')[3]
 				time = str(filename).split('.')[0].split('_')[4]
 			fileDate = datetime.datetime.strptime(date + '_' + time, '%Y%m%d_%H%M%S')
-			#print fileDate.date(), thisdate.date()
 			if fileDate.date() != thisdate.date(): continue
 			times.append(fileDate)
 		
-		#outPath = '/localdata/ProbSevere/besttrack/btrt/'
-		#outDir = outPath + thisdate.strftime('%Y%m') + '/'
 		historyPath = outDir + 'history_' + thisdate.strftime('%Y%m%d')+ '.json'
 	
 		for time in times:
@@ -88,6 +120,23 @@ def runBTRT(start, end, dates, inDir, outDir, inType, outType, bufferTime, buffe
 		
 
 def generateLegacyOutput(stormCells, stormTracks, distanceRatio, outDir, date):
+	"""
+	Produces the old legacy file output (best not to use this one)
+
+	Parameters
+	----------
+	stormCells : Dictionary
+		Dictionary containing all storm cells to be saved
+	stormTracks : Dictionary
+		Full stormTracks dictionary containing information about the current 
+		tracks and the cells contained within them
+	distanceRatio : float
+		The ratio between x-y distances and lat-lon distances
+	outDir : string
+		Filepath where the output files will be saved
+	date : datetime.datetime
+		The current date being processed
+	"""
 	
 	print 'Preparing output...'
 	
@@ -166,10 +215,10 @@ def generateLegacyOutput(stormCells, stormTracks, distanceRatio, outDir, date):
 		json.dump(stormTracks, outfile, sort_keys=True, indent=0)
 
 
-"""
-Main
-"""
 if __name__ == '__main__':
+	"""
+	Main - Parse user arguments and then run BTRT over a specified set of data
+	"""
 	
 	start_time = timeit.default_timer()
 
@@ -189,7 +238,7 @@ if __name__ == '__main__':
 	bufferDist = args['bufferdist']
 	historyTime = args['historytime']
 	
-	# TODO: I'm not sure this works...
+	# TODO: I don't think this works...
 	#if len(dates) > 1:
 	#	subsets = []
 	#	numPerProc = int(np.ceil(float(len(dates)) / multiprocessing.cpu_count()))
@@ -204,6 +253,7 @@ if __name__ == '__main__':
 	#		pool.terminate()
 	#
 	#else:
-	runBTRT(start, end, dates, inDir, outDir, inType, outType, bufferTime, bufferDist, historyTime)
+	
+	runBTRT(dates, inDir, outDir, inType, outType, bufferTime, bufferDist, historyTime)
 
 	print timeit.default_timer() - start_time
